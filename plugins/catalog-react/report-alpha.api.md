@@ -563,13 +563,13 @@ export const EntityTableColumnTitle: (
 ) =>
   | 'Domain'
   | 'System'
-  | 'Name'
-  | 'Description'
   | 'Lifecycle'
   | 'Namespace'
   | 'Owner'
   | 'Tags'
   | 'Type'
+  | 'Name'
+  | 'Description'
   | 'Targets'
   | 'Title'
   | 'Label';

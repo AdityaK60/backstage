@@ -65,7 +65,11 @@ export interface CatalogTableProps {
   emptyContent?: ReactNode;
   /**
    * A static title to use for the table. If not provided, a title will be
-   * generated based on the current Kind and Type filters and total number of items.
+   * generated based on the current Kind and Type filters. When a `user` filter
+   * (starred, owned, or all) is active, the count shown in the title comes from
+   * the corresponding count hook (`useStarredEntitiesCount`, `useOwnedEntitiesCount`,
+   * or `useAllEntitiesCount`) so that it correctly reflects client-side filtering.
+   * For other filters the count comes from the backend's `totalItems`.
    */
   title?: string;
   subtitle?: string;
