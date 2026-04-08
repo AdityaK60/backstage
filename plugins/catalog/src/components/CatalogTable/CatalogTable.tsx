@@ -33,8 +33,11 @@ import {
   entityPresentationApiRef,
   entityPresentationSnapshot,
   getEntityRelations,
+  useAllEntitiesCount,
   useEntityList,
+  useOwnedEntitiesCount,
   useStarredEntities,
+  useStarredEntitiesCount,
   type EntityPresentationApi,
 } from '@backstage/plugin-catalog-react';
 import CircularProgress from '@material-ui/core/CircularProgress';
@@ -225,21 +228,35 @@ export const CatalogTable = (props: CatalogTableProps) => {
   const titlePreamble = capitalize(
     filters.user?.value ?? t('catalogTable.allFilters'),
   );
-  const titleText =
-    props.title ||
-    [titlePreamble, currentType, pluralize(currentKind), currentCount]
-      .filter(s => s)
-      .join(' ');
+  const userFilterValue = filters.user?.value;
+  const titlePrefix = [titlePreamble, currentType, pluralize(currentKind)]
+    .filter(s => s)
+    .join(' ');
+
+  let titleContent: string | ReactElement;
+  if (props.title) {
+    titleContent = props.title;
+  } else if (userFilterValue === 'starred') {
+    titleContent = <StarredTitle prefix={titlePrefix} />;
+  } else if (userFilterValue === 'owned') {
+    titleContent = <OwnedTitle prefix={titlePrefix} />;
+  } else if (userFilterValue === 'all') {
+    titleContent = <AllTitle prefix={titlePrefix} />;
+  } else {
+    titleContent =
+      totalItems !== undefined ? `${titlePrefix} (${totalItems})` : titlePrefix;
+  }
+
   const title =
     loading && !isLoading ? (
       <span
         style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5em' }}
       >
-        {titleText}
+        {titleContent}
         <CircularProgress size="0.8em" data-testid="loading-indicator" />
       </span>
     ) : (
-      titleText
+      titleContent
     );
 
   const actions = props.actions || defaultActions;
