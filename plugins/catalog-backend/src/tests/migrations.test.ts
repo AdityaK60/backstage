@@ -17,6 +17,7 @@
 import { Knex } from 'knex';
 import { TestDatabases } from '@backstage/backend-test-utils';
 import fs from 'node:fs';
+import { createHash } from 'node:crypto';
 
 const migrationsDir = `${__dirname}/../../migrations`;
 const migrationsFiles = fs.readdirSync(migrationsDir).sort();
@@ -784,67 +785,96 @@ describe('migrations', () => {
           value: 'my-api',
           original_value: 'my-api',
         },
+        // NULL entity_id row should survive the migration
+        {
+          entity_id: null,
+          key: 'global',
+          value: 'setting',
+          original_value: 'setting',
+        },
       ]);
 
       // Verify initial state
       const preMigrationCount = await knex('search').count('* as count');
-      expect(Number(preMigrationCount[0].count)).toBe(6);
+      expect(Number(preMigrationCount[0].count)).toBe(7);
 
       // Run the migration
       await migrateUpOnce(knex);
 
-      // Verify orphaned rows (id3) were deleted since id3 is not in final_entities
-      const postMigrationRows = await knex('search').orderBy([
-        'entity_id',
-        'key',
-      ]);
-      expect(postMigrationRows).toEqual([
-        {
-          entity_id: 'id1',
+      // Verify orphaned rows (id3) were deleted, but NULL entity_id row survived
+      const postMigrationRows = await knex('search');
+      expect(postMigrationRows).toHaveLength(5);
+      expect(postMigrationRows).toEqual(
+        expect.arrayContaining([
+          {
+            entity_id: null,
+            key: 'global',
+            value: 'setting',
+            original_value: 'setting',
+          },
+          {
+            entity_id: 'id1',
+            key: 'kind',
+            value: 'component',
+            original_value: 'Component',
+          },
+          {
+            entity_id: 'id1',
+            key: 'metadata.name',
+            value: 'service-a',
+            original_value: 'service-a',
+          },
+          {
+            entity_id: 'id2',
+            key: 'kind',
+            value: 'component',
+            original_value: 'Component',
+          },
+          {
+            entity_id: 'id2',
+            key: 'metadata.name',
+            value: 'service-b',
+            original_value: 'service-b',
+          },
+        ]),
+      );
+
+      // Verify FK is enforced: inserting with a nonexistent entity_id should be rejected
+      await expect(
+        knex('search').insert({
+          entity_id: 'nonexistent',
           key: 'kind',
-          value: 'component',
-          original_value: 'Component',
-        },
-        {
-          entity_id: 'id1',
-          key: 'metadata.name',
-          value: 'service-a',
-          original_value: 'service-a',
-        },
-        {
-          entity_id: 'id2',
-          key: 'kind',
-          value: 'component',
-          original_value: 'Component',
-        },
-        {
-          entity_id: 'id2',
-          key: 'metadata.name',
-          value: 'service-b',
-          original_value: 'service-b',
-        },
-      ]);
+          value: 'test',
+          original_value: 'test',
+        }),
+      ).rejects.toEqual(expect.anything());
 
       // Verify FK cascade works: deleting from final_entities should cascade to search
       await knex('final_entities').where({ entity_id: 'id1' }).delete();
-      const searchAfterDelete = await knex('search').orderBy([
-        'entity_id',
-        'key',
-      ]);
-      expect(searchAfterDelete).toEqual([
-        {
-          entity_id: 'id2',
-          key: 'kind',
-          value: 'component',
-          original_value: 'Component',
-        },
-        {
-          entity_id: 'id2',
-          key: 'metadata.name',
-          value: 'service-b',
-          original_value: 'service-b',
-        },
-      ]);
+      const searchAfterDelete = await knex('search');
+      expect(searchAfterDelete).toHaveLength(3);
+      expect(searchAfterDelete).toEqual(
+        expect.arrayContaining([
+          {
+            entity_id: null,
+            key: 'global',
+            value: 'setting',
+            original_value: 'setting',
+          },
+          {
+            entity_id: 'id2',
+            key: 'kind',
+            value: 'component',
+            original_value: 'Component',
+          },
+          {
+            entity_id: 'id2',
+            key: 'metadata.name',
+            value: 'service-b',
+            original_value: 'service-b',
+          },
+        ]),
+      );
 
       // Restore id1 for down migration test
       await knex('final_entities').insert({
@@ -863,53 +893,49 @@ describe('migrations', () => {
         },
       ]);
 
+      // Delete id1 from refresh_state so it becomes an orphan for the down
+      // migration (exists in final_entities but not in refresh_state)
+      await knex('refresh_state').where({ entity_id: 'id1' }).delete();
+
       // Run the down migration
       await migrateDownOnce(knex);
 
-      // Verify data is still intact after down migration
-      const revertedSearchRows = await knex('search').orderBy([
-        'entity_id',
-        'key',
-      ]);
-      expect(revertedSearchRows).toEqual([
-        {
-          entity_id: 'id1',
-          key: 'kind',
-          value: 'component',
-          original_value: 'Component',
-        },
-        {
-          entity_id: 'id2',
-          key: 'kind',
-          value: 'component',
-          original_value: 'Component',
-        },
-        {
-          entity_id: 'id2',
-          key: 'metadata.name',
-          value: 'service-b',
-          original_value: 'service-b',
-        },
-      ]);
+      // Verify id1 search rows were cleaned up (orphan for refresh_state FK),
+      // while id2 and the NULL entity_id row survived
+      const revertedSearchRows = await knex('search');
+      expect(revertedSearchRows).toHaveLength(3);
+      expect(revertedSearchRows).toEqual(
+        expect.arrayContaining([
+          {
+            entity_id: null,
+            key: 'global',
+            value: 'setting',
+            original_value: 'setting',
+          },
+          {
+            entity_id: 'id2',
+            key: 'kind',
+            value: 'component',
+            original_value: 'Component',
+          },
+          {
+            entity_id: 'id2',
+            key: 'metadata.name',
+            value: 'service-b',
+            original_value: 'service-b',
+          },
+        ]),
+      );
 
       // Verify FK is back to refresh_state: deleting from refresh_state should cascade
-      await knex('refresh_state').where({ entity_id: 'id1' }).delete();
-      const afterRefreshStateDelete = await knex('search').orderBy([
-        'entity_id',
-        'key',
-      ]);
+      await knex('refresh_state').where({ entity_id: 'id2' }).delete();
+      const afterRefreshStateDelete = await knex('search');
       expect(afterRefreshStateDelete).toEqual([
         {
-          entity_id: 'id2',
-          key: 'kind',
-          value: 'component',
-          original_value: 'Component',
-        },
-        {
-          entity_id: 'id2',
-          key: 'metadata.name',
-          value: 'service-b',
-          original_value: 'service-b',
+          entity_id: null,
+          key: 'global',
+          value: 'setting',
+          original_value: 'setting',
         },
       ]);
 
@@ -1063,6 +1089,87 @@ describe('migrations', () => {
         r => r.entity_id === 'id2',
       );
       expect(id2RefreshRow?.next_stitch_at).toBeNull();
+
+      await knex.destroy();
+    },
+  );
+
+  it.each(databases.eachSupportedId())(
+    '20260403000000_add_location_entity_ref.js, %p',
+    async databaseId => {
+      const knex = await databases.init(databaseId);
+
+      await migrateUntilBefore(
+        knex,
+        '20260403000000_add_location_entity_ref.js',
+      );
+
+      // The bootstrap location row was added by an earlier migration; after this
+      // migration it will have an empty-string placeholder for location_entity_ref.
+      const [bootstrapRow] = await knex('locations').where('type', 'bootstrap');
+      expect(bootstrapRow).toBeDefined();
+
+      // Insert a couple of non-bootstrap location rows to verify the backfill.
+      await knex('locations').insert([
+        {
+          id: 'aaaaaaaa-0000-0000-0000-000000000001',
+          type: 'url',
+          target: 'https://example.com/a/catalog-info.yaml',
+        },
+        {
+          id: 'aaaaaaaa-0000-0000-0000-000000000002',
+          type: 'url',
+          target: 'https://example.com/b/catalog-info.yaml',
+        },
+      ]);
+
+      // Verify the column does not yet exist
+      const columnsBefore = await knex('locations').columnInfo();
+      expect(columnsBefore.location_entity_ref).toBeUndefined();
+
+      await migrateUpOnce(knex);
+
+      // Column should now exist
+      const columnsAfter = await knex('locations').columnInfo();
+      expect(columnsAfter.location_entity_ref).toBeDefined();
+
+      const rowsAfter = await knex('locations').orderBy('id').select();
+
+      // Helper matching the migration's own logic
+      function expectedRef(type: string, target: string): string {
+        return `location:default/generated-${createHash('sha1')
+          .update(`${type}:${target}`)
+          .digest('hex')}`.toLocaleLowerCase('en-US');
+      }
+
+      // Non-bootstrap rows get their entity ref backfilled
+      const rowA = rowsAfter.find(
+        r => r.id === 'aaaaaaaa-0000-0000-0000-000000000001',
+      );
+      expect(rowA?.location_entity_ref).toBe(
+        expectedRef('url', 'https://example.com/a/catalog-info.yaml'),
+      );
+
+      const rowB = rowsAfter.find(
+        r => r.id === 'aaaaaaaa-0000-0000-0000-000000000002',
+      );
+      expect(rowB?.location_entity_ref).toBe(
+        expectedRef('url', 'https://example.com/b/catalog-info.yaml'),
+      );
+
+      // The two targets produce distinct entity refs
+      expect(rowA?.location_entity_ref).not.toBe(rowB?.location_entity_ref);
+
+      // The bootstrap row gets an empty string placeholder (it will be removed
+      // in a future migration, so a real entity ref is not needed for it)
+      const bootstrapRowAfter = rowsAfter.find(r => r.type === 'bootstrap');
+      expect(bootstrapRowAfter?.location_entity_ref).toBe('');
+
+      // Rolling back removes the column
+      await migrateDownOnce(knex);
+
+      const columnsReverted = await knex('locations').columnInfo();
+      expect(columnsReverted.location_entity_ref).toBeUndefined();
 
       await knex.destroy();
     },

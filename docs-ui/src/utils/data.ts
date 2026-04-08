@@ -18,6 +18,10 @@ export const components: Page[] = [
     slug: 'avatar',
   },
   {
+    title: 'Badge',
+    slug: 'badge',
+  },
+  {
     title: 'Box',
     slug: 'box',
   },
@@ -40,6 +44,10 @@ export const components: Page[] = [
   {
     title: 'Checkbox',
     slug: 'checkbox',
+  },
+  {
+    title: 'CheckboxGroup',
+    slug: 'checkbox-group',
   },
   {
     title: 'Container',
@@ -70,6 +78,10 @@ export const components: Page[] = [
     slug: 'link',
   },
   {
+    title: 'List',
+    slug: 'list',
+  },
+  {
     title: 'Menu',
     slug: 'menu',
   },
@@ -86,6 +98,10 @@ export const components: Page[] = [
     slug: 'radio-group',
   },
   {
+    title: 'SearchAutocomplete',
+    slug: 'search-autocomplete',
+  },
+  {
     title: 'SearchField',
     slug: 'search-field',
   },
@@ -96,6 +112,10 @@ export const components: Page[] = [
   {
     title: 'Skeleton',
     slug: 'skeleton',
+  },
+  {
+    title: 'Slider',
+    slug: 'slider',
   },
   {
     title: 'Switch',

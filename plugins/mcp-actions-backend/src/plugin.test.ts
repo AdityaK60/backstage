@@ -118,7 +118,7 @@ describe('Mcp Backend', () => {
           required: ['name'],
           type: 'object',
         },
-        name: 'local:make-greeting',
+        name: 'local.make-greeting',
       },
     ]);
   });
@@ -161,7 +161,7 @@ describe('Mcp Backend', () => {
           required: ['name'],
           type: 'object',
         },
-        name: 'local:make-greeting',
+        name: 'local.make-greeting',
       },
     ]);
   });
@@ -264,7 +264,7 @@ describe('Mcp Backend', () => {
         ListToolsResultSchema,
       );
       expect(catalogResult.tools).toHaveLength(1);
-      expect(catalogResult.tools[0].name).toBe('catalog-actions:get-entity');
+      expect(catalogResult.tools[0].name).toBe('catalog-actions.get-entity');
 
       const scaffolderClient = new Client({ name: 'test', version: '1.0' });
       const scaffolderTransport = new StreamableHTTPClientTransport(
@@ -277,7 +277,7 @@ describe('Mcp Backend', () => {
       );
       expect(scaffolderResult.tools).toHaveLength(1);
       expect(scaffolderResult.tools[0].name).toBe(
-        'scaffolder-actions:create-app',
+        'scaffolder-actions.create-app',
       );
     });
   });
@@ -307,10 +307,17 @@ describe('Mcp Backend', () => {
     });
 
     it('should expose oauth-protected-resource when DCR is enabled', async () => {
+      const mockExternalBaseUrl = 'http://external.local:0/api';
+      const mockDiscovery = mockServices.discovery.mock({
+        getExternalBaseUrl: async pluginId =>
+          `${mockExternalBaseUrl}/${pluginId}`,
+      });
+
       const { server } = await startTestBackend({
         features: [
           mcpPlugin,
           mockPluginWithActions,
+          mockDiscovery.factory,
           mockServices.rootConfig.factory({
             data: {
               backend: {
@@ -335,6 +342,10 @@ describe('Mcp Backend', () => {
       expect(response.body.resource).toMatch(/\/api\/mcp-actions$/);
       expect(response.body.authorization_servers).toHaveLength(1);
       expect(response.body.authorization_servers[0]).toMatch(/\/api\/auth$/);
+      expect(response.body.resource).toContain(`${mockExternalBaseUrl}`);
+      expect(response.body.authorization_servers[0]).toContain(
+        `${mockExternalBaseUrl}/`,
+      );
     });
 
     it('should expose oauth-protected-resource when CIMD is enabled', async () => {
